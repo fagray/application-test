@@ -45,8 +45,15 @@ class BookingRepository extends BaseRepository
     {
         parent::__construct($model);
         $this->mailer = $mailer;
-        $this->logger = new Logger('admin_logger');
+        $this->initializeAndRecordAdminLogger();
+    }
 
+    /**
+     * Create an admin log file
+     */
+    public function initializeAndRecordAdminLogger()
+    {
+        $this->logger = new Logger('admin_logger');
         $this->logger->pushHandler(new StreamHandler(storage_path('logs/admin/laravel-' . date('Y-m-d') . '.log'), Logger::DEBUG));
         $this->logger->pushHandler(new FirePHPHandler());
     }
@@ -91,12 +98,13 @@ class BookingRepository extends BaseRepository
      */
     public function getUsersJobsHistory($user_id, Request $request)
     {
-        $page = $request->get('page');
-        if (isset($page)) {
+        $pagenum = "1";
+        if ($request->has('page')) {
+            
+            $page = $request->get('page');
             $pagenum = $page;
-        } else {
-            $pagenum = "1";
-        }
+        } 
+
         $cuser = User::find($user_id);
         $usertype = '';
         $emergencyJobs = array();
