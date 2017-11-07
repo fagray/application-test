@@ -45,13 +45,13 @@ class BookingRepository extends BaseRepository
     {
         parent::__construct($model);
         $this->mailer = $mailer;
-        $this->initializeAndRecordAdminLogger();
+        $this->initializeAndBootAdminLogger();
     }
 
     /**
      * Create an admin log file
      */
-    public function initializeAndRecordAdminLogger()
+    public function initializeAndBootAdminLogger()
     {
         $this->logger = new Logger('admin_logger');
         $this->logger->pushHandler(new StreamHandler(storage_path('logs/admin/laravel-' . date('Y-m-d') . '.log'), Logger::DEBUG));
@@ -100,7 +100,7 @@ class BookingRepository extends BaseRepository
     {
         $pagenum = "1";
         if ($request->has('page')) {
-            
+
             $page = $request->get('page');
             $pagenum = $page;
         } 
