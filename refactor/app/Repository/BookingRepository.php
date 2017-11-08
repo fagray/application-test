@@ -68,14 +68,18 @@ class BookingRepository extends BaseRepository
         $usertype = '';
         $emergencyJobs = array();
         $noramlJobs = array();
-        if ($cuser && $cuser->is('customer')) {
-            $jobs = $cuser->jobs()->with('user.userMeta', 'user.average', 'translatorJobRel.user.average', 'language', 'feedback')->whereIn('status', ['pending', 'assigned', 'started'])->orderBy('due', 'asc')->get();
-            $usertype = 'customer';
-        } elseif ($cuser && $cuser->is('translator')) {
+
+        // by default, lets assume that the cuser is a customer
+        $jobs = $cuser->jobs()->with('user.userMeta', 'user.average', 'translatorJobRel.user.average', 'language', 'feedback')->whereIn('status', ['pending', 'assigned', 'started'])->orderBy('due', 'asc')->get();
+        $usertype = 'customer';
+        
+         // or else, do an overriding
+        if ($cuser && $cuser->is('translator')) {
             $jobs = Job::getTranslatorJobs($cuser->id, 'new');
             $jobs = $jobs->pluck('jobs')->all();
             $usertype = 'translator';
         }
+
         if ($jobs) {
             foreach ($jobs as $jobitem) {
                 if ($jobitem->immediate == 'yes') {
@@ -84,8 +88,9 @@ class BookingRepository extends BaseRepository
                     $noramlJobs[] = $jobitem;
                 }
             }
-            $noramlJobs = collect($noramlJobs)->each(function ($item, $key) use ($user_id) {
-                $item['usercheck'] = Job::checkParticularJob($user_id, $item);
+            $noramlJobs = collect($noramlJobs)
+                            ->each(function ($item, $key) use ($user_id) {
+                                $item['usercheck'] = Job::checkParticularJob($user_id, $item);
             })->sortBy('due')->all();
         }
 
@@ -180,28 +185,28 @@ class BookingRepository extends BaseRepository
                     return $response;
                 }
             }
+
+            $data['customer_phone_type'] = 'no';
+
             if (isset($data['customer_phone_type'])) {
                 $data['customer_phone_type'] = 'yes';
-            } else {
-                $data['customer_phone_type'] = 'no';
             }
+
+            $data['customer_physical_type'] = 'no';
+            $response['customer_physical_type'] = 'no';
 
             if (isset($data['customer_physical_type'])) {
                 $data['customer_physical_type'] = 'yes';
                 $response['customer_physical_type'] = 'yes';
-            } else {
-                $data['customer_physical_type'] = 'no';
-                $response['customer_physical_type'] = 'no';
-            }
+            } 
 
-            if ($data['immediate'] == 'yes') {
-                $due_carbon = Carbon::now()->addMinute($immediatetime);
-                $data['due'] = $due_carbon->format('Y-m-d H:i:s');
-                $data['immediate'] = 'yes';
-                $data['customer_phone_type'] = 'yes';
-                $response['type'] = 'immediate';
+            $due_carbon = Carbon::now()->addMinute($immediatetime);
+            $data['due'] = $due_carbon->format('Y-m-d H:i:s');
+            $data['immediate'] = 'yes';
+            $data['customer_phone_type'] = 'yes';
+            $response['type'] = 'immediate';
 
-            } else {
+            if ( ! $data['immediate'] == 'yes') {
                 $due = $data['due_date'] . " " . $data['due_time'];
                 $response['type'] = 'regular';
                 $due_carbon = Carbon::createFromFormat('m/d/Y H:i', $due);
@@ -211,7 +216,7 @@ class BookingRepository extends BaseRepository
                     $response['message'] = "Can't create booking in past";
                     return $response;
                 }
-            }
+            } 
             if (in_array('male', $data['job_for'])) {
                 $data['gender'] = 'male';
             } else if (in_array('female', $data['job_for'])) {
@@ -275,12 +280,9 @@ class BookingRepository extends BaseRepository
             $data['customer_town'] = $cuser->userMeta->city;
             $data['customer_type'] = $cuser->userMeta->customer_type;
 
-            //Event::fire(new JobWasCreated($job, $data, '*'));
-
-//            $this->sendNotificationToSuitableTranslators($job->id, $data, '*');// send Push for New job posting
         } else {
             $response['status'] = 'fail';
-            $response['message'] = "Translator can not create booking";
+            $response['message'] = "Translator cannot create booking";
         }
 
         return $response;
