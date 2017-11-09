@@ -26,12 +26,13 @@ use Monolog\Handler\StreamHandler;
 use Illuminate\Support\Facades\Log;
 use Monolog\Handler\FirePHPHandler;
 use Illuminate\Support\Facades\Auth;
+use DTApi\Repository\Contracts\BookingRepositoryInterface;
 
 /**
  * Class BookingRepository
  * @package DTApi\Repository
  */
-class BookingRepository extends BaseRepository
+class BookingRepository extends BaseRepository implements BookingRepositoryInterface
 {
 
     protected $model;

@@ -6,7 +6,8 @@ use DTApi\Models\Job;
 use DTApi\Http\Requests;
 use DTApi\Models\Distance;
 use Illuminate\Http\Request;
-use DTApi\Repository\BookingRepository;
+// use DTApi\Repository\BookingRepository;
+use DTApi\Repository\Contracts\BookingRepositoryInterface as BookingRepository;
 
 /**
  * Class BookingController
