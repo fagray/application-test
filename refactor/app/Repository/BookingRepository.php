@@ -58,6 +58,48 @@ class BookingRepository extends BaseRepository
         $this->logger->pushHandler(new FirePHPHandler());
     }
 
+    public function giveMeJobsOf($cuser)
+    {
+        $data = [];
+         // avoid using else clauses if necessarry
+        if ($cuser && $cuser->is('customer')) {
+            $data['jobs'] = $cuser->jobs()->with('user.userMeta', 'user.average', 'translatorJobRel.user.average', 'language', 'feedback')->whereIn('status', ['pending', 'assigned', 'started'])->orderBy('due', 'asc')->get();
+            $data['usertype'] = 'customer';
+        }
+        
+        if ($cuser && $cuser->is('translator')) {
+            $jobs = Job::getTranslatorJobs($cuser->id, 'new');
+            $data['jobs'] = $jobs->pluck('jobs')->all();
+            $data['usertype'] = 'translator';
+        }
+
+        return $data;
+
+    }
+
+    public function segregateJobs()
+    {
+        $data['emergency_jobs'] = [];
+        $data['normal_jobs'] = [];
+
+        if (collect($jobs)->count() > 0 ) {
+            foreach ($jobs as $jobitem) {
+                if ($jobitem->immediate == 'yes') {
+                    array_push($data['emergency_jobs'],$jobitem);
+                } else {
+                    array_push($data['normal_jobs'],$jobitem);
+                }
+            }
+            $normalJobs = collect($normalJobs)
+                            ->each(function ($item, $key) use ($user_id) {
+                                $item['usercheck'] = Job::checkParticularJob($user_id, $item);
+            })->sortBy('due')->all();
+        }
+
+        return $data;
+    }
+
+
     /**
      * @param $user_id
      * @return array
@@ -65,36 +107,21 @@ class BookingRepository extends BaseRepository
     public function getUsersJobs($user_id)
     {
         $cuser = User::find($user_id);
-        $usertype = '';
-        $emergencyJobs = array();
-        $noramlJobs = array();
-
-        // by default, lets assume that the cuser is a customer
-        $jobs = $cuser->jobs()->with('user.userMeta', 'user.average', 'translatorJobRel.user.average', 'language', 'feedback')->whereIn('status', ['pending', 'assigned', 'started'])->orderBy('due', 'asc')->get();
-        $usertype = 'customer';
         
-         // or else, do an overriding
-        if ($cuser && $cuser->is('translator')) {
-            $jobs = Job::getTranslatorJobs($cuser->id, 'new');
-            $jobs = $jobs->pluck('jobs')->all();
-            $usertype = 'translator';
-        }
+        // determine if the user is customer or a translator
+        // and find the jobs and cuser type
+        // we saved a lot of white space and were complying 
+        // standards not to write more than 50-100 lines in a single method
+        $data = $this->giveMeJobsOf($cuser);
+        $segregatedJobs = $this->segregateJobs($data['jobs']);
+        $usertype = $data['user_type'];
+                   
+        return ['emergencyJobs' => $segregatedJobs['emergency_jobs'], 'normalJobs' => $segregatedJobs['normal_jobs'], 'cuser' => $cuser, 'usertype' => $usertype];
+    }
 
-        if ($jobs) {
-            foreach ($jobs as $jobitem) {
-                if ($jobitem->immediate == 'yes') {
-                    $emergencyJobs[] = $jobitem;
-                } else {
-                    $noramlJobs[] = $jobitem;
-                }
-            }
-            $noramlJobs = collect($noramlJobs)
-                            ->each(function ($item, $key) use ($user_id) {
-                                $item['usercheck'] = Job::checkParticularJob($user_id, $item);
-            })->sortBy('due')->all();
-        }
-
-        return ['emergencyJobs' => $emergencyJobs, 'noramlJobs' => $noramlJobs, 'cuser' => $cuser, 'usertype' => $usertype];
+    public function getJobHistoryOf($cuser,$results_per_page = 15)
+    {
+        return $cuser->jobs()->with('user.userMeta', 'user.average', 'translatorJobRel.user.average', 'language', 'feedback', 'distance')->whereIn('status', ['completed', 'withdrawbefore24', 'withdrawafter24', 'timedout'])->orderBy('due', 'desc')->paginate($results_per_page);
     }
 
     /**
@@ -115,20 +142,17 @@ class BookingRepository extends BaseRepository
         $emergencyJobs = array();
         $noramlJobs = array();
         if ($cuser && $cuser->is('customer')) {
-            $jobs = $cuser->jobs()->with('user.userMeta', 'user.average', 'translatorJobRel.user.average', 'language', 'feedback', 'distance')->whereIn('status', ['completed', 'withdrawbefore24', 'withdrawafter24', 'timedout'])->orderBy('due', 'desc')->paginate(15);
+           $jobs = $this->getJobHistoryOf($cuser);
             $usertype = 'customer';
             return ['emergencyJobs' => $emergencyJobs, 'noramlJobs' => [], 'jobs' => $jobs, 'cuser' => $cuser, 'usertype' => $usertype, 'numpages' => 0, 'pagenum' => 0];
         } elseif ($cuser && $cuser->is('translator')) {
             $jobs_ids = Job::getTranslatorJobsHistoric($cuser->id, 'historic', $pagenum);
             $totaljobs = $jobs_ids->total();
             $numpages = ceil($totaljobs / 15);
-
             $usertype = 'translator';
-
             $jobs = $jobs_ids;
             $noramlJobs = $jobs_ids;
-//            $jobs['data'] = $noramlJobs;
-//            $jobs['total'] = $totaljobs;
+
             return ['emergencyJobs' => $emergencyJobs, 'noramlJobs' => $noramlJobs, 'jobs' => $jobs, 'cuser' => $cuser, 'usertype' => $usertype, 'numpages' => $numpages, 'pagenum' => $pagenum];
         }
     }
@@ -140,28 +164,40 @@ class BookingRepository extends BaseRepository
      */
     public function store($user, $data)
     {
+        // cant refactor much on this portion as i have only a glimpse 
+        // of this codebase
 
+        if ( ! $user->user_type == env('CUSTOMER_ROLE_ID')) {
+            $response['status'] = 'fail';
+            $response['message'] = "Translator cannot create booking";
+            return $response;
+        }
+        
         $immediatetime = 5;
         $consumer_type = $user->userMeta->consumer_type;
         if ($user->user_type == env('CUSTOMER_ROLE_ID')) {
             $cuser = $user;
-
+            // default response message
+            $response['message'] = "Du måste fylla in alla fält";
             if (!isset($data['from_language_id'])) {
                 $response['status'] = 'fail';
-                $response['message'] = "Du måste fylla in alla fält";
                 $response['field_name'] = "from_language_id";
                 return $response;
+            }
+            
+            if (isset($data['duration']) && $data['duration'] == '') {
+                    $response['status'] = 'fail';
+                    $response['field_name'] = "duration";
+                    return $response;
             }
             if ($data['immediate'] == 'no') {
                 if (isset($data['due_date']) && $data['due_date'] == '') {
                     $response['status'] = 'fail';
-                    $response['message'] = "Du måste fylla in alla fält";
                     $response['field_name'] = "due_date";
                     return $response;
                 }
                 if (isset($data['due_time']) && $data['due_time'] == '') {
                     $response['status'] = 'fail';
-                    $response['message'] = "Du måste fylla in alla fält";
                     $response['field_name'] = "due_time";
                     return $response;
                 }
@@ -171,29 +207,15 @@ class BookingRepository extends BaseRepository
                     $response['field_name'] = "customer_phone_type";
                     return $response;
                 }
-                if (isset($data['duration']) && $data['duration'] == '') {
-                    $response['status'] = 'fail';
-                    $response['message'] = "Du måste fylla in alla fält";
-                    $response['field_name'] = "duration";
-                    return $response;
-                }
-            } else {
-                if (isset($data['duration']) && $data['duration'] == '') {
-                    $response['status'] = 'fail';
-                    $response['message'] = "Du måste fylla in alla fält";
-                    $response['field_name'] = "duration";
-                    return $response;
-                }
-            }
-
+            } 
+            
             $data['customer_phone_type'] = 'no';
+            $data['customer_physical_type'] = 'no';
+            $response['customer_physical_type'] = 'no';
 
             if (isset($data['customer_phone_type'])) {
                 $data['customer_phone_type'] = 'yes';
             }
-
-            $data['customer_physical_type'] = 'no';
-            $response['customer_physical_type'] = 'no';
 
             if (isset($data['customer_physical_type'])) {
                 $data['customer_physical_type'] = 'yes';
@@ -280,10 +302,7 @@ class BookingRepository extends BaseRepository
             $data['customer_town'] = $cuser->userMeta->city;
             $data['customer_type'] = $cuser->userMeta->customer_type;
 
-        } else {
-            $response['status'] = 'fail';
-            $response['message'] = "Translator cannot create booking";
-        }
+        } 
 
         return $response;
 
