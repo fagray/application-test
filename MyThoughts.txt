@@ -1,0 +1,32 @@
+I did not refactor each of every methods on the repository since I don't have much enough time and an orientation on the application itself. 
+
+I just refactored some and created some couple of methods and classes as basis or lets say my recommendation on how we could improve the codebase and maintain it as the application grows. 
+
+Here are my thoughts : 
+
+Its good to know that you guys utilizes a software design patterns, to be exact its Repository Pattern. I saw Repositories on the codebase but I don't see any interfaces that implements by repositories. Its like a contract to a repository that you will inject to your controllers but it needs to be binded first on a service provider.
+
+Laravel is also my main gun in terms of software development. Im also utilizing same pattern as yours but as time grows, you need to be wise when it comes to structuring your application which pumped me to study more on the software architecture topics. 
+
+I also noticed that you trigger events that will send a push notification and update the data on real-time by means of web sockets. Token-based authentication is a great way to authorize users when accessing data on your database, I am also a fan of it. 
+
+I suggest to utilize the laravel's query builder when we are fetching data from multiple
+tables and get the needed values only than eager loading it and let other data goes to waste.
+By this, we can improve its performance and utilized the data returned.
+
+I did not see any Caching of data on the testing codebase, but we can use it to greatly boost
+the fetching of data from the database.
+
+Overall, this test really challenged me and I can't wait to see the whole application and work on it to make it better and better. Just give me a shot.
+
+Thank you and I hope I can join this team and learn from them.
+
+
+
+
+
+
+
+
+
+
